@@ -266,13 +266,44 @@ pre.code{background:#0c0e12;border:1px solid var(--line);border-radius:10px;padd
   .legend-rail{display:none}
   .hero-grid{grid-template-columns:1fr}
 }
+
+/* phones and small tablets: top bar with a menu */
+.menuBtn{display:none}
+.phoneqr{display:grid;grid-template-columns:1fr 120px;gap:12px;align-items:center}
+#qr svg{width:120px;height:120px;display:block;border-radius:8px;background:#fff}
+#qr svg rect[fill="#ffffff"]{fill:#fff}
+@media (max-width:900px){
+  .rail{position:sticky;top:0;z-index:50;flex-direction:row;flex-wrap:wrap;justify-content:space-between;align-items:center;padding:10px 14px;gap:0;background:#121419f2;backdrop-filter:blur(8px)}
+  .rail .brand{font-size:15px;line-height:1.1}.rail .brand small{display:none}.rail .brand br{display:none}
+  .menuBtn{display:inline-flex;align-items:center;gap:6px;font:600 13px var(--body);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 14px;cursor:pointer}
+  .rail nav{display:none!important;flex-basis:100%;flex-direction:column!important;flex-wrap:nowrap!important;max-height:70vh;overflow:auto;padding-top:10px;gap:0}
+  .rail.open nav{display:flex!important}
+  .rail.open .navgroup{display:block!important;margin-top:8px}
+  .rail nav a{grid-template-columns:44px 1fr!important;padding:11px 8px;font-size:15px}
+  main{padding:18px 14px 64px;gap:36px}
+  h1{font-size:clamp(28px,8vw,40px)!important}
+  .phoneqr{display:none}
+  .page,.page>section,.page>section>*{min-width:0;max-width:100%}
+  .rqtabs{max-width:100%}
+  .flowbox{overflow-x:auto;-webkit-overflow-scrolling:touch}#flSvg{min-width:860px}
+  .page table{display:block;overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch}
+  .row-ctrl{flex-wrap:wrap}
+  .row-ctrl .btn{flex:1 1 auto;min-height:44px}
+  .stage{min-height:240px}
+  .stage canvas{max-height:none;width:100%;height:auto}
+  .flowbar{gap:8px}.flowbar .seg{flex-wrap:wrap}
+  .rqnext a{min-width:0;flex:1}
+  .rqtabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .rqtabs a{flex:0 0 auto}
+}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
 <div class="shell">
   <aside class="rail">
-    <div class="brand">Real World<br>to Blender<small>CS 747 · STUDIO + RESULTS</small></div>
+    <div class="brand">Real World<br> to Blender<small>CS 747 · STUDIO + RESULTS</small></div>
+    <button class="menuBtn" id="menuBtn" aria-expanded="false" aria-controls="nav">Menu</button>
     <nav id="nav" aria-label="Pages">
       <div class="navgroup">Studio</div>
       <a href="#studio" data-page="studio"><span>▶</span>Pose Studio</a>
@@ -455,6 +486,8 @@ pre.code{background:#0c0e12;border:1px solid var(--line);border-radius:10px;padd
 <script src="mp/FBXLoader.js"></script>
 <script src="mp/GLTFLoader.js"></script>
 <script src="rig.js"></script>
+<script src="mp/mp4-muxer.js"></script>
+<script src="mp/qrcode.js"></script>
 <script src="results.js"></script>
 <script type="module">
 import { FilesetResolver, PoseLandmarker } from "./mp/vision_bundle.js";

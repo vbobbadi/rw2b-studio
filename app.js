@@ -180,7 +180,7 @@ $("#page-live").innerHTML = `
   <div class="studio">
     <div style="display:grid;gap:12px">
       <div class="stage" id="liveStage"><div class="empty" id="liveEmpty"></div><canvas id="liveOut" hidden></canvas><div class="status" id="liveStatus"></div></div>
-      <div class="row-ctrl"><button class="btn on" id="camBtn">Start camera</button><button class="btn" id="liveRec" disabled>Record video</button><span class="muted" id="liveMsg" style="font-size:12px"></span></div>
+      <div class="row-ctrl"><button class="btn on" id="camBtn">Start camera</button><button class="btn" id="camFlip" hidden title="Switch between the front and back camera">Switch camera</button><button class="btn" id="liveRec" disabled>Record video</button><span class="muted" id="liveMsg" style="font-size:12px"></span></div>
     </div>
     <div class="ctrl panel">
       <div><div class="muted" style="font-size:12.5px;margin-bottom:6px">Character for everyone (change one person below)</div><div class="charpick" id="livePick"></div></div>
@@ -189,9 +189,13 @@ $("#page-live").innerHTML = `
       <label>People to track <select id="liveMax"><option value="1">1 (just me)</option><option value="2">2</option><option value="3">3</option><option value="4" selected>4</option><option value="5">5</option></select></label>
       <label style="flex-direction:row;display:flex;gap:6px;align-items:center"><input type="checkbox" id="liveMix"> A different character for each new person</label>
       <div><div class="muted" style="font-size:12.5px;margin-bottom:6px">People in view · choose a character for each</div><div class="people" id="livePeople"><p class="note" style="margin:0">Start the camera to see who is in view.</p></div></div>
+      <div class="panel phoneqr" style="background:var(--panel-2)"><div><h3>Open on your phone</h3>
+        <p class="note" style="margin:0">Scan with your phone's camera to open this page there. Your phone's camera works with the front and back lens.</p></div><div id="qr" aria-label="QR code for the live camera page"></div></div>
       <div class="panel" style="background:var(--panel-2);display:grid;gap:8px"><h3>If the camera does not start</h3>
-        <p class="note" style="margin:0">Pages shown inside Claude are not allowed to open a camera. Use the public site, <a href="https://vbobbadi.github.io/rw2b-studio/#live" target="_blank" rel="noopener">vbobbadi.github.io/rw2b-studio</a>, or run it on your own computer:</p>
-        <ol class="note" style="margin:0;padding-left:18px"><li>Download <span class="num">rw2b_studio.zip</span> or clone the GitHub repo.</li><li>In the folder, run <span class="num">python -m http.server 8000</span>.</li><li>Open <span class="num">http://localhost:8000/#live</span> and allow the camera.</li></ol></div>
+        <ul class="note" style="margin:0;padding-left:18px"><li>Allow the camera when the browser asks. If you said no, turn it back on in the site settings (the icon next to the address).</li>
+        <li>On a phone, open the link in Safari or Chrome, not inside Instagram, WhatsApp or another app.</li>
+        <li>Close other apps that are using the camera.</li>
+        <li>Pages shown inside Claude cannot use a camera. Use <a href="https://vbobbadi.github.io/rw2b-studio/#live" target="_blank" rel="noopener">vbobbadi.github.io/rw2b-studio</a>.</li></ul></div>
     </div>
   </div>
 </section>`;
@@ -328,7 +332,7 @@ const ARCH = window.ARCH = [
     {id:"temporal", name:"Learned temporal model", s:"plan", what:"Uses neighbouring frames to fix poses, not just smooth them.", io:"sequence → corrected sequence", ev:"Not built."}]},
   {n:"09", t:"Animate", d:"Turn each person's pose into a character.", nodes:[
     {id:"blender", name:"Blender SMPL rig", s:"ok", what:"SMPL rotations drive an animated body; saved as .blend and rendered to .mp4.", io:"pose sequence → .blend + .mp4", ev:"outputs/clipB__dgs_perjoint+sg.blend and .mp4."},
-    {id:"web", name:"Browser characters", s:"ok", what:"Every person gets their chosen character drawn over, instead of, or beside the video.", io:"33 points per person → character video", ev:"Pose Studio: record .webm, export motion JSON for Blender."},
+    {id:"web", name:"Browser characters", s:"ok", what:"Every person gets their chosen character drawn over, instead of, or beside the video.", io:"33 points per person → character video", ev:"Pose Studio: record .mp4, export motion JSON for Blender."},
     {id:"mixblend", name:"Mixamo retarget in Blender", s:"plan", what:"Map SMPL rotations onto a Mixamo character inside Blender automatically.", io:"pose sequence + Mixamo rig → animated character", ev:"Done in the browser only; Blender gets empties to parent a rig to."}]}
 ];
 $("#page-arch").innerHTML = `
@@ -387,7 +391,9 @@ async function getEngine(model, numPoses){
   const files = await MPV.FilesetResolver.forVisionTasks(new URL("mp", location.href).href);
   const buf = new Uint8Array(await (await fetch(`mp/pose_landmarker_${model}.task.wasm`)).arrayBuffer());   // the host serves the model under a .wasm name
   const opts = d => ({baseOptions:{modelAssetBuffer:buf, delegate:d}, runningMode:"VIDEO", numPoses:+numPoses, outputSegmentationMasks:true, minPoseDetectionConfidence:0.5, minPosePresenceConfidence:0.5, minTrackingConfidence:0.5});
-  let lm; try { lm = await MPV.PoseLandmarker.createFromOptions(files, opts("GPU")); } catch (e) { lm = await MPV.PoseLandmarker.createFromOptions(files, opts("CPU")); }
+  // some phones hang on the GPU delegate instead of failing, so give it 12 s before falling back to the CPU
+  let lm; try { lm = await Promise.race([MPV.PoseLandmarker.createFromOptions(files, opts("GPU")), new Promise((_, rej) => setTimeout(() => rej(new Error("GPU timeout")), 12000))]); }
+  catch (e) { lm = await MPV.PoseLandmarker.createFromOptions(files, opts("CPU")); }
   if (engine && engine.close) engine.close(); engine = lm; engineKey = key; engine.mode = "VIDEO"; engine.t = 0; return engine;
 }
 /* one call for both videos and photos -> [{lm:[[x,y,z,vis]], world:[[x,y,z]], mask:{w,h,data}}] */
@@ -561,19 +567,52 @@ async function save(filename, data, msgEl){
   if (!downloads){ if (!window.claude){ const a = document.createElement("a"); a.href = URL.createObjectURL(data); a.download = filename; a.click(); msgEl.textContent = "Saved " + filename; } else msgEl.textContent = "Saving files is not available in this view."; return; }
   try { await downloads.save({filename, data}); msgEl.textContent = "Saved " + filename; } catch (e) { msgEl.textContent = "Not saved: " + (e && e.message ? e.message : "the download was declined"); }
 }
+/* Recording: MP4 (H.264) everywhere we can.
+   1) WebCodecs + mp4-muxer -> a normal, seekable .mp4 (Chrome, Edge, Safari 16.4+, Firefox 130+)
+   2) MediaRecorder with an MP4 type (older Safari, some Chrome builds)
+   3) WebM only if the browser can do nothing else */
+async function avcConfig(w, h){
+  if (!window.VideoEncoder) return null;
+  for (const codec of ["avc1.640033", "avc1.4d0033", "avc1.640028", "avc1.42001f"]){
+    const c = {codec, width:w, height:h, bitrate:Math.round(w * h * 30 * 0.12), framerate:30, avc:{format:"avc"}};
+    try { if ((await VideoEncoder.isConfigSupported(c)).supported) return c; } catch (e) {}
+  }
+  return null;
+}
 function recorder(canvas, btn, msg, getName){
-  let rec = null, chunks = [];
-  btn.onclick = () => {
-    if (rec){ rec.stop(); return; }
-    if (!canvas.captureStream || !window.MediaRecorder){ msg.textContent = "This browser cannot record a canvas."; return; }
-    const type = ["video/webm;codecs=vp9","video/webm"].find(t => MediaRecorder.isTypeSupported(t)) || "";
-    rec = new MediaRecorder(canvas.captureStream(30), type ? {mimeType:type} : {}); chunks = [];
-    rec.ondataavailable = e => e.data.size && chunks.push(e.data);
-    rec.onstop = () => { const blob = new Blob(chunks, {type:"video/webm"}); rec = null; btn.textContent = "Record video"; btn.classList.remove("on"); save(getName(), blob, msg); };
-    rec.start(); btn.textContent = "Stop recording"; btn.classList.add("on"); msg.textContent = "Recording…";
+  let rec = null;
+  const done = () => { rec = null; btn.textContent = "Record video"; btn.classList.remove("on"); btn.disabled = false; };
+  btn.onclick = async () => {
+    if (rec){ btn.disabled = true; msg.textContent = "Finishing the video…"; try { const {blob, ext} = await rec.stop(); done(); save(getName() + "." + ext, blob, msg); } catch (e) { done(); msg.textContent = "Recording failed: " + e.message; } return; }
+    // even size, at most 1920 wide (H.264 needs even dimensions)
+    const k = Math.min(1, 1920 / canvas.width, 1920 / canvas.height), w = Math.max(2, Math.floor(canvas.width * k / 2) * 2), h = Math.max(2, Math.floor(canvas.height * k / 2) * 2);
+    const cfg = window.Mp4Muxer ? await avcConfig(w, h) : null;
+    if (cfg){
+      const target = new Mp4Muxer.ArrayBufferTarget();
+      const muxer = new Mp4Muxer.Muxer({target, video:{codec:"avc", width:w, height:h, frameRate:30}, fastStart:"in-memory", firstTimestampBehavior:"offset"});
+      let err = null; const enc = new VideoEncoder({output:(chunk, meta) => muxer.addVideoChunk(chunk, meta), error:e => err = e}); enc.configure(cfg);
+      const cv = document.createElement("canvas"); cv.width = w; cv.height = h; const cx = cv.getContext("2d");
+      const t0 = performance.now(); let n = 0, last = -1, stopped = false;
+      const tick = () => { if (stopped) return; const t = performance.now() - t0;
+        if (t - last >= 1000 / 30 - 1 && enc.encodeQueueSize < 8){ last = t; cx.drawImage(canvas, 0, 0, w, h);
+          const f = new VideoFrame(cv, {timestamp:Math.round(t * 1000), duration:Math.round(1e6 / 30)}); enc.encode(f, {keyFrame:n % 60 === 0}); f.close(); n++; }
+        requestAnimationFrame(tick); };
+      tick();
+      rec = {stop: async () => { stopped = true; await enc.flush(); enc.close(); if (err) throw err; if (!n) throw new Error("no frames were captured"); muxer.finalize(); return {blob:new Blob([target.buffer], {type:"video/mp4"}), ext:"mp4"}; }};
+    } else {
+      if (!canvas.captureStream || !window.MediaRecorder){ msg.textContent = "This browser cannot record video. Try Chrome, Edge or Safari."; return; }
+      const type = ["video/mp4;codecs=avc1.42E01E", "video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm"].find(t => MediaRecorder.isTypeSupported(t)) || "";
+      const mr = new MediaRecorder(canvas.captureStream(30), type ? {mimeType:type, videoBitsPerSecond:8e6} : {}), chunks = [];
+      mr.ondataavailable = e => e.data.size && chunks.push(e.data);
+      const isMp4 = (mr.mimeType || type).includes("mp4");
+      rec = {stop: () => new Promise(r => { mr.onstop = () => r({blob:new Blob(chunks, {type:isMp4 ? "video/mp4" : "video/webm"}), ext:isMp4 ? "mp4" : "webm"}); mr.stop(); })};
+      mr.start(1000);
+      if (!isMp4) msg.textContent = "This browser can only record WebM. Use Chrome, Edge or Safari for MP4.";
+    }
+    btn.textContent = "Stop recording"; btn.classList.add("on"); if (!msg.textContent.startsWith("This browser")) msg.textContent = "Recording (MP4)…";
   };
 }
-recorder(out, $("#recBtn"), $("#saveMsg"), () => `rw2b_${Date.now()}.webm`);
+recorder(out, $("#recBtn"), $("#saveMsg"), () => `rw2b_${Date.now()}`);
 $("#pngBtn").onclick = () => out.toBlob(b => save(`rw2b_frame_${Date.now()}.png`, b, $("#saveMsg")), "image/png");
 $("#jsonBtn").onclick = () => {
   const fr = [...new Map(studio.frames.map(f => [f.t, f])).values()].sort((a, b) => a.t - b.t);
@@ -616,6 +655,10 @@ $("#copyScript").onclick = async () => { try { await navigator.clipboard.writeTe
 const live = {char:"robot", color:CHARACTERS.robot.color, stream:null, video:null, running:false};
 const lout = $("#liveOut"), lctx = lout.getContext("2d"), ltracker = PersonTracker();
 $("#liveEmpty").textContent = "Press Start camera. Your video never leaves this device.";
+{ const rail = document.querySelector(".rail"), mb = $("#menuBtn"); if (mb){ mb.onclick = () => { const o = rail.classList.toggle("open"); mb.setAttribute("aria-expanded", o); mb.textContent = o ? "Close" : "Menu"; };
+  $("#nav").addEventListener("click", e => { if (e.target.closest("a")){ rail.classList.remove("open"); mb.setAttribute("aria-expanded", false); mb.textContent = "Menu"; } }); } }
+(() => { const el = $("#qr"); if (!el || !window.qrcode) return; try { const u = /github\.io|localhost|127\.0\.0\.1/.test(location.host) && !/localhost|127\.0\.0\.1/.test(location.host) ? location.origin + location.pathname + "#live" : "https://vbobbadi.github.io/rw2b-studio/#live";
+  const q = qrcode(0, "M"); q.addData(u); q.make(); el.innerHTML = q.createSvgTag({cellSize:4, margin:2, scalable:true}); el.title = u; } catch (e) {} })();
 $("#liveColor").value = live.color; $("#liveColor").oninput = e => live.color = e.target.value;
 live.assign = {}; live.seen = "";
 const liveCharOf = id => { if (!live.assign[id]) { const keys = Object.keys(allChars()); live.assign[id] = $("#liveMix").checked ? keys[(id - 1) % keys.length] : live.char; } return live.assign[id]; };
@@ -633,25 +676,50 @@ function renderLivePeople(now){
 async function liveLoop(){ if (!live.running) return;
   try { const raw = (await detect(live.video, true)).slice(0, +$("#liveMax").value);
     const people = ltracker.update(raw).map(p => { const ch = liveCharOf(p.id), c = ch === "none" ? null : ch; return {id:p.id, mask:p.mask, L2:p.t.sm(p.lm, 0.5), W3:p.t.sm3(p.world, 0.5), char:c, color:c ? (c === live.char && !$("#liveMix").checked ? live.color : allChars()[c].color) : null}; });
-    compose(lctx, lout.width, lout.height, live.video, people, {mode:$("#liveMode").value, mirror:true, labels:people.length > 1});
+    compose(lctx, lout.width, lout.height, live.video, people, {mode:$("#liveMode").value, mirror:live.facing === "user", labels:people.length > 1});
     const now = performance.now(); people.forEach(p => live.last[p.id] = now); renderLivePeople(now);
     $("#liveStatus").innerHTML = people.length ? chip(people.length > 1 ? `${people.length} people` : "tracking you", "good") : chip("step back so your body is in view", "warn"); } catch (e) {}
   requestAnimationFrame(liveLoop); }
 function sizeLive(){ if (!live.vw) return; const three = $("#liveMode").value === "three"; lout.width = live.vw; lout.height = Math.round(live.vh * (three ? 1.5 : 1)); }
 $("#liveMode").onchange = sizeLive;
 $("#liveMix").onchange = () => { live.assign = {}; live.seen = ""; };
-$("#camBtn").onclick = async () => {
-  if (live.running){ live.running = false; live.stream.getTracks().forEach(t => t.stop()); $("#camBtn").textContent = "Start camera"; $("#liveRec").disabled = true; return; }
-  $("#liveMsg").textContent = "";
-  try { if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error("no camera API"); live.stream = await navigator.mediaDevices.getUserMedia({video:{width:1280, height:720}, audio:false}); }
-  catch (e) { $("#liveEmpty").innerHTML = "The camera could not start in this view (" + (e.name || e.message) + "). Pages shown inside Claude are not allowed to use a camera, so open the public GitHub site or follow the steps on the right. Uploads and samples on the Pose Studio page work here."; return; }
+live.facing = "user";
+const CAM_ERR = {NotAllowedError:"Camera permission was blocked. Allow the camera for this site in your browser settings and try again.",
+  NotFoundError:"No camera was found on this device.", NotReadableError:"The camera is busy. Close other apps or tabs that use it and try again.",
+  OverconstrainedError:"This camera does not support the requested settings.", SecurityError:"This page is not allowed to use the camera here. Open https://vbobbadi.github.io/rw2b-studio/#live in Safari or Chrome."};
+function stopCam(){ live.running = false; if (live.stream) live.stream.getTracks().forEach(t => t.stop()); live.stream = null;
+  if (live.video){ live.video.srcObject = null; live.video.remove(); live.video = null; } }
+async function openCam(){
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ const e = new Error(window.isSecureContext ? "This browser has no camera access." : "The camera needs a secure (https) page."); e.name = window.isSecureContext ? "NotFoundError" : "SecurityError"; throw e; }
+  try { return await navigator.mediaDevices.getUserMedia({video:{facingMode:live.facing, width:{ideal:1280}, height:{ideal:720}}, audio:false}); }
+  catch (e) { if (e.name === "OverconstrainedError" || e.name === "TypeError") return await navigator.mediaDevices.getUserMedia({video:true, audio:false}); throw e; }
+}
+async function startCam(){
+  $("#liveMsg").textContent = ""; $("#liveEmpty").hidden = false; $("#liveEmpty").textContent = "Starting the camera…";
+  try { live.stream = await openCam(); }
+  catch (e) { $("#liveEmpty").textContent = CAM_ERR[e.name] || ("The camera could not start: " + (e.message || e.name) + "."); return false; }
   stopPlay();
-  const v = document.createElement("video"); v.srcObject = live.stream; v.muted = true; v.playsInline = true; await v.play(); live.video = v;
-  live.vw = v.videoWidth; live.vh = v.videoHeight; sizeLive(); lout.hidden = false; $("#liveEmpty").hidden = true;
-  try { await getEngine("lite", 5); } catch (e) { $("#liveMsg").textContent = "The pose model could not start: " + e.message; return; }
-  live.running = true; live.assign = {}; live.last = {}; live.seen = ""; $("#camBtn").textContent = "Stop camera"; $("#liveRec").disabled = false; ltracker.reset(); liveLoop();
+  // iOS Safari only feeds frames to a video that is inline, muted and in the page
+  const v = document.createElement("video"); v.setAttribute("playsinline", ""); v.setAttribute("muted", ""); v.setAttribute("autoplay", ""); v.muted = true; v.playsInline = true;
+  v.style.cssText = "position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none"; document.body.appendChild(v);
+  v.srcObject = live.stream;
+  await new Promise(r => { if (v.readyState >= 1) r(); else v.onloadedmetadata = r; });
+  try { await v.play(); } catch (e) {}
+  for (let i = 0; i < 40 && !v.videoWidth; i++) await new Promise(r => setTimeout(r, 50));
+  live.video = v; live.vw = v.videoWidth || 640; live.vh = v.videoHeight || 480; sizeLive(); lout.hidden = false; $("#liveEmpty").hidden = true;
+  const tr = live.stream.getVideoTracks()[0], fm = tr && tr.getSettings ? tr.getSettings().facingMode : null; if (fm) live.facing = fm === "environment" ? "environment" : "user";
+  try { const devs = await navigator.mediaDevices.enumerateDevices(); $("#camFlip").hidden = devs.filter(d => d.kind === "videoinput").length < 2; } catch (e) {}
+  setStatus2(chip("loading the pose model…", "acc"));
+  try { await getEngine("lite", 5); } catch (e) { $("#liveMsg").textContent = "The pose model could not start: " + e.message; stopCam(); return false; }
+  live.running = true; live.assign = {}; live.last = {}; live.seen = ""; $("#camBtn").textContent = "Stop camera"; $("#liveRec").disabled = false; ltracker.reset(); liveLoop(); return true;
+}
+const setStatus2 = html => $("#liveStatus").innerHTML = html;
+$("#camBtn").onclick = async () => {
+  if (live.running || live.stream){ stopCam(); $("#camBtn").textContent = "Start camera"; $("#liveRec").disabled = true; $("#camFlip").hidden = true; lout.hidden = true; $("#liveEmpty").hidden = false; $("#liveEmpty").textContent = "Camera stopped."; setStatus2(""); return; }
+  $("#camBtn").disabled = true; await startCam(); $("#camBtn").disabled = false;
 };
-recorder(lout, $("#liveRec"), $("#liveMsg"), () => `rw2b_live_${Date.now()}.webm`);
+$("#camFlip").onclick = async () => { live.facing = live.facing === "user" ? "environment" : "user"; stopCam(); await startCam(); };
+recorder(lout, $("#liveRec"), $("#liveMsg"), () => `rw2b_live_${Date.now()}`);
 
 /* ============================== library ============================= */
 const Library = (() => {
