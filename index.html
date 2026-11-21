@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Real World to Blender Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* Plan: one dark "viewport" world, like a 3D app. Left rail = chapters (one per research question),
+   hero = live skeleton viewer of real model output, then one evidence panel per RQ. */
+:root{
+  --bg:#121419; --panel:#1b1e25; --panel-2:#22262f; --line:#2e333d; --ink:#e9ebef; --muted:#9aa1ad;
+  --accent:#ff8a3d;            /* DGS / our system — the Blender-orange thread through the page */
+  --hmr:#7fb0e8;               /* released HMR2.0 */
+  --gen:#c3a6ff;               /* generalist */
+  --sg:#5fd3b5;                /* smoothed */
+  --good:#5fd38a; --warn:#f2c14e; --bad:#ff6b6b;
+  --display:"Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --body:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono:"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.shell{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:100%}
+.rail{position:sticky;top:0;height:100vh;padding:28px 18px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:22px;background:linear-gradient(180deg,#15181e,#121419)}
+.brand{font-family:var(--display);font-weight:800;font-size:19px;line-height:1.1;letter-spacing:-.01em}
+.brand small{display:block;font-family:var(--mono);font-weight:400;font-size:11px;color:var(--muted);letter-spacing:.06em;margin-top:6px}
+.rail nav{display:flex;flex-direction:column;gap:2px}
+.rail nav a{display:grid;grid-template-columns:34px 1fr;align-items:baseline;padding:7px 8px;border-radius:7px;color:var(--muted);text-decoration:none;font-size:13.5px}
+.rail nav a span{font-family:var(--mono);font-size:11px;color:#6d7480}
+.rail nav a:hover,.rail nav a.on{background:var(--panel);color:var(--ink)}
+.rail nav a.on span{color:var(--accent)}
+.legend-rail{margin-top:auto;display:grid;gap:6px;font-size:12px;color:var(--muted)}
+.key{display:flex;align-items:center;gap:8px}.key i{width:18px;height:3px;border-radius:2px;display:inline-block}
+main{padding:28px clamp(16px,3.2vw,44px) 80px;display:grid;gap:56px;min-width:0}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;letter-spacing:-.015em}
+h1{font-size:clamp(30px,4.2vw,52px);font-weight:800;line-height:1.02}
+h2{font-size:clamp(22px,2.4vw,30px);font-weight:700}
+h3{font-size:16px;font-weight:700}
+.eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.lede{max-width:68ch;color:#c9cdd5;font-size:16px}
+.muted{color:var(--muted)} .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+section{display:grid;gap:18px;scroll-margin-top:20px}
+.sec-head{display:grid;gap:8px;max-width:80ch}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:16px}
+.chip{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;padding:3px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.chip.good{color:var(--good);border-color:#2d5a3e;background:#16261d}
+.chip.warn{color:var(--warn);border-color:#5b4a1f;background:#2a2414}
+.chip.bad{color:var(--bad);border-color:#5e2b2b;background:#2a1717}
+.chip.acc{color:var(--accent);border-color:#5a3418;background:#2a1b10}
+.btn{font:500 13px var(--body);color:var(--ink);background:var(--panel-2);border:1px solid var(--line);padding:6px 11px;border-radius:8px;cursor:pointer}
+.btn:hover{border-color:#4a5160}
+a.btn{text-decoration:none;display:inline-block}
+.btn.on{border-color:var(--accent);color:var(--accent);background:#2a1b10}
+.seg{display:inline-flex;gap:4px;flex-wrap:wrap}
+/* hero */
+.hero{display:grid;gap:22px}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:16px}
+.viewer{position:relative;background:radial-gradient(120% 90% at 50% 10%,#232833 0%,#14171d 70%);border:1px solid var(--line);border-radius:14px;overflow:hidden;min-height:430px;display:flex;flex-direction:column}
+.viewer canvas{width:100%;flex:1;min-height:340px;cursor:grab;touch-action:none;display:block}
+.viewer canvas:active{cursor:grabbing}
+.vbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;border-top:1px solid var(--line);background:#171a20}
+.vtop{position:absolute;top:10px;left:12px;right:12px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;pointer-events:none}
+.vtop>*{pointer-events:auto}
+.hud{font-family:var(--mono);font-size:11px;color:var(--muted);background:#0f1115cc;border:1px solid var(--line);border-radius:8px;padding:6px 9px}
+input[type=range]{accent-color:var(--accent);flex:1;min-width:120px}
+.spark{width:100%;height:46px;display:block}
+.sheet{border-radius:10px;overflow:hidden;border:1px solid var(--line);background:#0f1115}
+.sheet img{width:100%;display:block}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:12px}
+.stat b{display:block;font-family:var(--mono);font-size:22px;font-weight:600}
+.stat span{font-size:12.5px;color:var(--muted)}
+/* findings */
+.findings{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px}
+.find{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;gap:8px;align-content:start}
+.find.good{border-left-color:var(--good)} .find.warn{border-left-color:var(--warn)} .find.bad{border-left-color:var(--bad)}
+.find .top{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.find p{margin:0;color:#c9cdd5;font-size:14px}
+.find .big{font-family:var(--mono);font-size:20px}
+/* charts */
+svg text{fill:var(--muted);font-family:var(--mono);font-size:11px}
+svg .lab{fill:var(--ink);font-family:var(--body);font-size:12.5px}
+.axis line,.axis path{stroke:var(--line)}
+.tip{position:fixed;pointer-events:none;background:#0d0f13;border:1px solid #3a404c;border-radius:8px;padding:7px 10px;font-size:12px;font-family:var(--mono);color:var(--ink);z-index:20;opacity:0;transition:opacity .08s;max-width:280px}
+.chart-wrap{overflow-x:auto}
+/* tables */
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:7px 9px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font-weight:600;color:var(--muted);font-size:12px;cursor:pointer;user-select:none;position:sticky;top:0;background:var(--panel)}
+td{font-family:var(--mono);font-variant-numeric:tabular-nums}
+td:first-child{font-family:var(--body)}
+.tablebox{max-height:430px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+/* clip gallery */
+.filters{display:flex;flex-wrap:wrap;gap:6px}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:grid;grid-template-rows:auto 1fr}
+.card .thumb{aspect-ratio:16/6;background:#0f1115 center/cover no-repeat;border:0;padding:0;cursor:zoom-in;display:block;width:100%}
+.card .thumb.none{display:grid;place-items:center;color:var(--muted);font-size:12px;cursor:default}
+.card .body{padding:12px 14px;display:grid;gap:9px;align-content:start}
+.card .title{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.card .row{font-family:var(--mono);font-size:11px;color:var(--accent)}
+.bars{display:grid;gap:5px}
+.bar{display:grid;grid-template-columns:62px 1fr 46px;gap:8px;align-items:center;font-size:12px}
+.bar .t{height:7px;border-radius:4px;background:#2a2f39;position:relative;overflow:hidden}
+.bar .t i{position:absolute;inset:0 auto 0 0;border-radius:4px}
+.bar .v{font-family:var(--mono);text-align:right;font-size:11.5px}
+.lightbox{position:fixed;inset:0;background:#000d;display:none;place-items:center;z-index:30;padding:24px}
+.lightbox.on{display:grid}
+.lightbox img{max-width:min(1280px,96vw);max-height:86vh;border-radius:10px}
+.lightbox p{color:var(--muted);text-align:center;margin:10px 0 0}
+.note{font-size:13px;color:var(--muted);max-width:90ch}
+footer{color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:20px;display:grid;gap:6px}
+
+.navgroup{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#6d7480;margin:12px 8px 4px}
+.rail nav{overflow:auto}
+.page{display:none;gap:56px}
+.page.on{display:grid}
+.drop{border:1.5px dashed #3a404c;border-radius:12px;padding:18px;display:grid;gap:10px;place-items:center;text-align:center;background:#171a20;transition:border-color .15s,background .15s}
+.drop.over{border-color:var(--accent);background:#21180f}
+.studio{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(280px,1fr);gap:16px;align-items:start}
+.stage{position:relative;background:#0c0e12;border:1px solid var(--line);border-radius:14px;overflow:hidden;display:grid;place-items:center;min-height:360px}
+.stage canvas{max-width:100%;max-height:70vh;display:block}
+.stage .empty{color:var(--muted);padding:40px;text-align:center;max-width:46ch}
+.status{position:absolute;left:10px;bottom:10px;right:10px;display:flex;gap:6px;flex-wrap:wrap;pointer-events:none}
+.ctrl{display:grid;gap:14px}
+.ctrl label{font-size:12.5px;color:var(--muted);display:grid;gap:6px}
+.ctrl select,.ctrl input[type=color]{font:500 13px var(--body);color:var(--ink);background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+.ctrl input[type=color]{padding:2px;height:32px;width:52px}
+.charpick{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:8px}
+.charpick button{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:6px;cursor:pointer;color:var(--ink);font:500 12px var(--body);display:grid;gap:4px}
+.charpick button canvas{width:100%;aspect-ratio:1;display:block;border-radius:6px;background:#11141a}
+.charpick button.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.row-ctrl{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.lib{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));gap:14px}
+.libcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:grid}
+.libcard canvas{width:100%;aspect-ratio:4/3;display:block;background:radial-gradient(100% 80% at 50% 20%,#232833,#12151b)}
+.libcard .body{padding:12px 14px;display:grid;gap:6px}
+.libcard p{margin:0;font-size:13px;color:var(--muted)}
+.team{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:14px}
+.member{background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--c);border-radius:12px;padding:16px;display:grid;gap:10px;align-content:start}
+.member .who{display:flex;align-items:center;gap:12px}
+.member .av{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font:700 18px var(--display);color:#111;background:var(--c)}
+.member ul{margin:0;padding-left:18px;font-size:13.5px;color:#c9cdd5;display:grid;gap:4px}
+.people{display:grid;gap:6px}
+.personrow{display:grid;grid-template-columns:12px auto 1fr;gap:10px;align-items:center;text-align:left;background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:8px 10px;color:var(--ink);font:500 13px var(--body);cursor:pointer}
+.personrow i{width:12px;height:12px;border-radius:50%;background:var(--c)}
+.personrow span{color:var(--muted);text-align:right;font-size:12.5px}
+.personrow select{font:500 12.5px var(--body);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:4px 6px;justify-self:end;max-width:100%}
+.personrow.on{border-color:var(--c);box-shadow:0 0 0 1px var(--c) inset}
+#out{cursor:crosshair}
+.archwrap{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
+.archinfo{position:sticky;top:20px;display:grid;gap:10px}
+.archinfo p{margin:0;font-size:13.5px;color:#c9cdd5}
+.archinfo .io{display:grid;gap:3px;font-size:13px;border-top:1px solid var(--line);padding-top:8px}
+
+
+/* research-question pages */
+#page-results>section{display:none}
+#page-results>section.on{display:block}
+#page-results>section.hero.on{display:grid}
+.rqtabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:22px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.rqtabs a{font:500 12.5px var(--body);color:var(--muted);text-decoration:none;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:var(--panel)}
+.rqtabs a b{font-family:var(--mono);font-weight:500;color:var(--accent);margin-right:6px;font-size:11px}
+.rqtabs a:hover{color:var(--ink);border-color:#4a5160}
+.rqtabs a.on{color:var(--ink);border-color:var(--accent);background:#2a1b10}
+.rqcard{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;margin:0 0 22px;overflow:hidden}
+.rqcard>div{padding:16px 18px;display:grid;gap:6px;align-content:start}
+.rqcard>div+div{border-left:1px solid var(--line)}
+.rqcard h4{margin:0;font:600 11.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.rqcard p{margin:0;font-size:14px;color:#d3d7de}
+.rqcard .ans{border-top:3px solid var(--line)}
+.rqcard .ans.good{border-top-color:var(--good)}.rqcard .ans.warn{border-top-color:var(--warn)}.rqcard .ans.bad{border-top-color:var(--bad)}
+.rqsub{display:flex;flex-wrap:wrap;gap:14px;margin:-6px 0 18px;font-size:12.5px}
+.rqsub a{color:var(--muted);text-decoration:none;border-bottom:1px dashed #4a5160}
+.rqsub a:hover{color:var(--ink)}
+.rqnext{display:flex;justify-content:space-between;gap:12px;margin-top:28px;padding-top:16px;border-top:1px solid var(--line)}
+.rqnext a{display:grid;gap:2px;text-decoration:none;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;min-width:200px}
+.rqnext a:hover{border-color:var(--accent)}
+.rqnext a span{font:11px var(--mono);color:var(--muted);letter-spacing:.06em}
+.rqnext a.nx{text-align:right;margin-left:auto}
+.find{cursor:pointer;transition:border-color .2s}.find:hover{border-color:#4a5160}
+.find .go{font-size:12.5px;color:var(--accent)}
+@media (max-width:900px){.rqcard{grid-template-columns:1fr}.rqcard>div+div{border-left:0;border-top:1px solid var(--line)}}
+/* animated architecture flow */
+.flowbar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:12px}
+.flowbar .seg{display:flex;gap:6px;align-items:center;font-size:12.5px}
+.flowgrid{display:grid;gap:14px}
+.flowbox{background:radial-gradient(120% 90% at 50% 0%,#1d2129 0%,#111318 75%);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+#flSvg{display:block;width:100%;height:auto}
+.flowcap{display:flex;gap:12px;align-items:baseline;padding:12px 16px;border-top:1px solid var(--line);background:#15181e;min-height:52px;font-size:14px}
+.flowcap .num{color:var(--accent);font-size:12px}
+.flowside{display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:14px;align-items:start}.flowside>.panel{display:grid;gap:10px;align-content:start}
+.scen{display:flex;flex-wrap:wrap;gap:6px}
+.sl{display:grid;grid-template-columns:92px 1fr 34px;gap:8px;align-items:center;font-size:12.5px;color:var(--muted)}
+.wbars{display:grid;gap:5px}
+.wrow{display:grid;grid-template-columns:88px 1fr 34px;gap:8px;align-items:center;font-size:12px;color:var(--muted)}
+.wrow i{height:8px;border-radius:4px;background:var(--panel-2);overflow:hidden;display:block}
+.wrow b{display:block;height:100%;border-radius:4px;transition:width .35s}
+.wrow em{font-style:normal;text-align:right;color:var(--ink)}
+.flinfo{display:grid;gap:8px}
+.flinfo h3{margin:0}.flinfo p{margin:0;font-size:13.5px;color:#c9cdd5}
+.flinfo .io{display:grid;gap:3px;font-size:13px;border-top:1px solid var(--line);padding-top:8px}
+.fl-edge{fill:none;stroke:#3a404c;stroke-width:2;transition:opacity .4s,stroke .3s,stroke-width .4s}
+.fl-edge.live{stroke:#6b7383}
+#flSvg.genmode .fl-edge.route{opacity:.12!important}
+#flSvg:not(.genmode) .fl-edge.gen{opacity:.18;stroke-dasharray:4 6}
+.fl-node{cursor:pointer;transition:opacity .4s}
+.fl-node .fl-bg{fill:#1e222b;stroke:#353b47;stroke-width:1.2;transition:stroke .3s,fill .3s}
+.fl-node .fl-tick{fill:#4a5160}
+.fl-node.ok .fl-tick{fill:var(--good)} .fl-node.weak .fl-tick{fill:var(--warn)} .fl-node.used .fl-tick{fill:var(--accent)}
+.fl-node.plan .fl-bg{fill:transparent;stroke-dasharray:5 5}.fl-node.plan{opacity:.6}
+.fl-node.hot .fl-bg{stroke:var(--accent);stroke-width:2;fill:#2a1f16;filter:url(#flGlow)}
+.fl-node.sel .fl-bg{stroke:var(--ink);stroke-width:2}
+.fl-node:hover .fl-bg{stroke:#6b7383}
+.fl-node:focus{outline:none}.fl-node:focus-visible .fl-bg{stroke:var(--accent);stroke-width:2.5}
+.fl-t{fill:var(--ink)!important;font:600 15px var(--body)!important}
+.fl-small{fill:var(--muted)!important;font:11.5px var(--mono)!important}
+.fl-w{fill:var(--ink)!important;font:600 12px var(--mono)!important}
+.fl-track{fill:#2a2f39}
+.fl-band rect{fill:#ff8a3d0a;stroke:#ff8a3d55;stroke-width:1.2;stroke-dasharray:6 5;cursor:pointer;transition:fill .3s}
+.fl-band.hot rect{fill:#ff8a3d1c;stroke:#ff8a3d}
+.fl-bandt{fill:var(--accent)!important;font:600 12px var(--mono)!important;letter-spacing:.04em}
+#flSvg.genmode .fl-node:is([aria-label="Problem identifier"],[aria-label="Router"],[aria-label="Fusion"]){opacity:.25}
+.fl-amb{fill:#8a93a3;opacity:.55}
+.fl-fig{animation:flBob 1.2s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:50% 100%}
+@keyframes flBob{from{transform:translateY(0) rotate(-4deg)}to{transform:translateY(-4px) rotate(4deg)}}
+@media (prefers-reduced-motion:reduce){.fl-fig{animation:none}}
+@media (max-width:1100px){.flowside{grid-template-columns:1fr}}
+.arch{display:grid;gap:0}
+.stage-row{display:grid;grid-template-columns:210px minmax(0,1fr);gap:14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+.stage-lab{display:grid;gap:4px;align-content:start}
+.stage-lab .num{font-size:11px;color:var(--accent)}
+.stage-lab p{margin:0;font-size:12.5px;color:var(--muted)}
+.stage-nodes{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;align-content:start}
+.anode{display:grid;gap:4px;text-align:left;padding:10px 11px;border-radius:9px;cursor:pointer;font:500 13px var(--body);color:var(--ink);background:var(--panel-2);border:1px solid var(--line);border-left:4px solid var(--line)}
+.anode span{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+.anode.ok{border-left-color:var(--good)} .anode.weak{border-left-color:var(--warn)} .anode.used{border-left-color:var(--accent)}
+.anode.plan{border-style:dashed;border-left-style:solid;background:transparent;color:#b9bfca}
+.anode.sel{box-shadow:0 0 0 2px var(--ink) inset}
+.anode:hover{border-color:#4a5160}
+.arrow{height:26px;position:relative}
+.arrow::before{content:"";position:absolute;left:105px;top:0;bottom:6px;width:2px;background:#3a404c}
+.arrow::after{content:"";position:absolute;left:100px;bottom:0;border:6px solid transparent;border-top:8px solid #3a404c;border-bottom:0}
+@media (max-width:1100px){.archwrap{grid-template-columns:1fr}.archinfo{position:static}}
+@media (max-width:640px){.stage-row{grid-template-columns:1fr}}
+.flow{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;counter-reset:st}
+.step{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;display:grid;gap:6px;position:relative}
+.step b{font-family:var(--mono);font-size:11px;color:var(--accent)}
+.step p{margin:0;font-size:13px;color:var(--muted)}
+pre.code{background:#0c0e12;border:1px solid var(--line);border-radius:10px;padding:12px;overflow:auto;font:12px/1.5 var(--mono);color:#cfd5df;max-height:320px;margin:0}
+@media (max-width:900px){.studio{grid-template-columns:1fr}.navgroup{display:none}}
+
+@media (max-width:900px){
+  .shell{grid-template-columns:1fr}
+  .rail{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;border-right:0;border-bottom:1px solid var(--line);padding:14px 16px;gap:12px}
+  .rail nav{flex-direction:row;flex-wrap:wrap}
+  .rail nav a{grid-template-columns:auto auto;gap:6px}
+  .legend-rail{display:none}
+  .hero-grid{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="rail">
+    <div class="brand">Real World<br>to Blender<small>CS 747 · STUDIO + RESULTS</small></div>
+    <nav id="nav" aria-label="Pages">
+      <div class="navgroup">Studio</div>
+      <a href="#studio" data-page="studio"><span>▶</span>Pose Studio</a>
+      <a href="#live" data-page="live"><span>●</span>Live Camera</a>
+      <a href="#characters" data-page="characters"><span>◆</span>Character Library</a>
+      <div class="navgroup">Project</div>
+      <a href="#arch" data-page="arch"><span>⌘</span>Architecture</a>
+      <a href="#how" data-page="how"><span>↳</span>How it works</a>
+      <a href="#team" data-page="team"><span>✦</span>Contributions</a>
+      <div class="navgroup">Research questions</div>
+      <a href="#findings" data-page="results"><span>◎</span>Overview</a>
+      <a href="#viewer" data-page="results"><span>▣</span>Model output</a>
+      <a href="#rq1-3dpw" data-page="results"><span>RQ1</span>3DPW accuracy</a>
+      <a href="#rq1-clips" data-page="results"><span>RQ1</span>Real clips</a>
+      <a href="#rq2" data-page="results"><span>RQ2</span>2D vs 3D occlusion</a>
+      <a href="#rq3" data-page="results"><span>RQ3</span>Hard-data picking</a>
+      <a href="#rq4" data-page="results"><span>RQ4·5</span>Experts vs one</a>
+      <a href="#rq6" data-page="results"><span>RQ6</span>Problem detector</a>
+    </nav>
+    <div class="legend-rail" id="resultsLegend">
+      <div class="key"><i style="background:var(--hmr)"></i>Released HMR2.0</div>
+      <div class="key"><i style="background:var(--accent)"></i>DGS (our experts + fusion)</div>
+      <div class="key"><i style="background:var(--gen)"></i>Generalist (GEN)</div>
+      <div class="key"><i style="background:var(--sg)"></i>DGS + smoothing</div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="page" id="page-studio"></div>
+    <div class="page" id="page-live"></div>
+    <div class="page" id="page-characters"></div>
+    <div class="page" id="page-arch"></div>
+    <div class="page" id="page-how"></div>
+    <div class="page" id="page-team"></div>
+    <div class="page" id="page-results">
+    <!-- HERO -->
+    <section class="hero" id="viewer">
+      <div class="sec-head">
+        <div class="eyebrow">Phone video → 3D body → Blender</div>
+        <h1>Can synthetic Blender data make 3D pose estimation survive real video?</h1>
+        <p class="lede">Below is real model output on stock clips from our 29-row test plan. Drag the figure to turn it. Orange is our Diagnose → Specialize → Fuse model, blue is the released HMR2.0, and green is ours after temporal smoothing. The two multi-person scenes show every tracked person at once.</p>
+      </div>
+      <div class="hero-grid">
+        <div class="viewer">
+          <div class="vtop">
+            <div class="seg" id="clipSeg" role="group" aria-label="Clip"></div>
+            <div class="hud" id="hud">frame —</div>
+          </div>
+          <canvas id="cv" aria-label="3D skeleton viewer: drag to rotate"></canvas>
+          <div class="vbar">
+            <button class="btn" id="play" aria-label="Play or pause">Pause</button>
+            <input type="range" id="scrub" min="0" max="1" value="0" aria-label="Frame">
+            <div class="seg" id="modelSeg" role="group" aria-label="Models shown"></div>
+            <span class="muted" id="multiNote" style="font-size:12px;display:none">One color per tracked person · HMR2.0</span>
+          </div>
+        </div>
+        <div style="display:grid;gap:12px;align-content:start">
+          <div class="sheet"><img id="sheet" alt="Contact sheet of the selected clip with person boxes"></div>
+          <div class="panel" style="padding:12px 14px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+              <h3 id="clipTitle">—</h3><span class="chip" id="clipRow">row —</span>
+            </div>
+            <p class="note" id="clipNote" style="margin:6px 0 8px"></p>
+            <div class="muted" id="sparkLabel" style="font-size:12px;margin-bottom:2px">Joint speed per frame (mm/frame). Spikes are jitter.</div>
+            <svg class="spark" id="spark" preserveAspectRatio="none"></svg>
+          </div>
+          <div class="stats" id="heroStats"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FINDINGS -->
+    <section id="findings">
+      <div class="sec-head">
+        <div class="eyebrow">01 · Verdicts</div>
+        <h2>What the runs say</h2>
+        <p class="lede">Each card answers one research question. Green means the idea held up, amber means mixed, red means the data says no.</p>
+      </div>
+      <div class="findings" id="findGrid"></div>
+    </section>
+
+    <!-- 3DPW -->
+    <section id="rq1-3dpw">
+      <div class="sec-head">
+        <div class="eyebrow">RQ1 · Real video with ground truth</div>
+        <h2>3DPW: 17,764 real frames, 24 outdoor sequences</h2>
+        <p class="lede">PA-MPJPE aligns each pose to the ground truth before measuring, so it scores body articulation. MPJPE does not rotate, so it also scores whether the body faces the right way. Lower is better on both.</p>
+      </div>
+      <div class="grid2">
+        <div class="panel"><h3>Error by model</h3><p class="note">Hover a dot for its value.</p><div class="chart-wrap"><svg id="tdpwDots"></svg></div></div>
+        <div class="panel">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+            <h3>Paired differences (95% CI, bootstrap over sequences)</h3>
+            <div class="seg" id="cmpSeg"></div>
+          </div>
+          <p class="note">Left of zero means the first model has lower error. Faded rows are not significant after Holm correction.</p>
+          <div class="chart-wrap"><svg id="forest"></svg></div>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="panel"><h3>Per sequence, PA-MPJPE (mm)</h3><p class="note">Click a column to sort. The best model in each row is highlighted.</p><div class="tablebox" id="seqTable"></div></div>
+        <div class="panel"><h3>Error vs the detector's occlusion score</h3><p class="note">3DPW frames binned by how occluded our problem detector thinks they are.</p><div class="chart-wrap"><svg id="occChart"></svg></div></div>
+      </div>
+    </section>
+
+    <!-- CLIPS -->
+    <section id="rq1-clips">
+      <div class="sec-head">
+        <div class="eyebrow">RQ1 · The 29-row test plan</div>
+        <h2>Where it breaks on real footage</h2>
+        <p class="lede">No ground truth here, so these are stability measures on the main person: raw jitter (mm of joint acceleration per frame), how often the tracker keeps the person, and left/right swaps. Click a contact sheet to enlarge it.</p>
+      </div>
+      <div class="stats" id="clipStats"></div>
+      <div class="filters" id="groupSeg"></div>
+      <div class="gallery" id="gallery"></div>
+      <p class="note">Rows 15 (very close) and 19 (camera circling) have no clip yet. Rows 13 and 22 are edited copies of other clips. Rows 25–29 are Blender export checks, not video conditions.</p>
+    </section>
+
+    <!-- RQ2 -->
+    <section id="rq2">
+      <div class="sec-head">
+        <div class="eyebrow">RQ2 · Synthetic test, 3 seeds</div>
+        <h2>3D-rendered occlusion beats 2D-pasted on occluded images</h2>
+        <p class="lede">Errors on the 3D-occlusion test set, split by why a joint is hidden. Every fine-tune helps; 3D-rendered occluders (D) help most, including on joints the body hides from itself.</p>
+      </div>
+      <div class="grid2">
+        <div class="panel"><h3>PA-MPJPE by joint visibility (mm)</h3><div class="chart-wrap"><svg id="selfOcc"></svg></div></div>
+        <div class="panel"><h3>Key gaps (robust in all seeds)</h3><div class="chart-wrap"><svg id="rq2gaps"></svg></div>
+          <p class="note">On 3DPW, which has little occlusion, D is 2.1 mm worse than C on PA-MPJPE but 1.7 mm better on MPJPE.</p></div>
+      </div>
+    </section>
+
+    <!-- RQ4 -->
+    <section id="rq4">
+      <div class="sec-head">
+        <div class="eyebrow">RQ4 · RQ5 · Synthetic test</div>
+        <h2>One generalist beats four specialists everywhere</h2>
+        <p class="lede">PA-MPJPE (mm) of every model on every test condition. Stronger color is better; the best cell in each column has an outline. GEN wins every column, including each expert's home condition.</p>
+      </div>
+      <div class="panel"><div class="chart-wrap"><svg id="heat"></svg></div>
+        <p class="note">Fair-comparison caveat: GEN has the same total parameters and compute as the four experts together, but each expert alone saw a quarter of GEN's training steps.</p></div>
+      <div class="grid2">
+        <div class="panel"><h3>RQ5 · Fusion methods (mean over conditions)</h3><div class="chart-wrap"><svg id="fusion"></svg></div></div>
+        <div class="panel"><h3>Same question on real video (3DPW)</h3><div class="chart-wrap"><svg id="rq4real"></svg></div></div>
+      </div>
+    </section>
+
+    <!-- RQ3 -->
+    <section id="rq3">
+      <div class="sec-head">
+        <div class="eyebrow">RQ3 · Synthetic test, 3 seeds</div>
+        <h2>Picking "hard" training data did not help</h2>
+        <p class="lede">Same 2,000-image budget, three ways to choose it. Random sampling wins on every test set. The bandit put 92% of its budget into heavily occluded images and still only tied random there.</p>
+      </div>
+      <div class="panel"><div class="chart-wrap"><svg id="rq3chart"></svg></div></div>
+    </section>
+
+    <!-- RQ6 -->
+    <section id="rq6">
+      <div class="sec-head">
+        <div class="eyebrow">RQ6 · Diagnose step</div>
+        <h2>The problem detector is near-perfect in Blender and near-chance on real clips</h2>
+        <p class="lede">AUC of 1.0 is perfect, 0.5 is a coin flip. Simple image checks (brightness, blur, box position) beat the trained detector on real video.</p>
+      </div>
+      <div class="panel"><div class="chart-wrap"><svg id="aucChart"></svg></div></div>
+    </section>
+
+    <footer>
+      <div>Sources: Colab notebooks 06–12 in <span class="num">CS747_project/code/rw2b</span>; result files in <span class="num">CS747_project/results/</span>. Synthetic test: 942 AMASS renders. 3DPW: von Marcard et al., ECCV 2018 (non-commercial research licence); GT joints from the neutral SMPL, so numbers compare our models with each other, not with published 3DPW tables.</div>
+      <div>Stock clips from Pexels (free licence), listed in <span class="num">videos/rows/_sources.csv</span>.</div>
+    </footer>
+    </div>
+  </main>
+</div>
+<div class="tip" id="tip"></div>
+<div class="lightbox" id="lb" role="dialog" aria-modal="true" aria-label="Contact sheet"><div><img id="lbImg" alt=""><p id="lbCap"></p></div></div>
+
+<script src="mp/three.min.js"></script>
+<script src="mp/fflate.min.js"></script>
+<script src="mp/FBXLoader.js"></script>
+<script src="mp/GLTFLoader.js"></script>
+<script src="rig.js"></script>
+<script src="results.js"></script>
+<script type="module">
+import { FilesetResolver, PoseLandmarker } from "./mp/vision_bundle.js";
+window.MPV = { FilesetResolver, PoseLandmarker }; dispatchEvent(new Event("mpv-ready"));
+</script>
+<script src="app.js"></script>
+<script src="flow.js"></script>
+<script src="rq.js"></script>
+</body>
+</html>
