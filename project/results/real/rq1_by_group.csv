@@ -1,0 +1,47 @@
+group,model,detection_rate,jitter_mm,rot_jitter_deg,pose_jumps,lr_swaps,bone_cv,foot_skate_mm,low_conf_joints,disagreement_mm
+Body position,dgs_learned,0.776,21.802,1.239,0.007,2.667,0.0,,0.0,13.979
+Body position,dgs_learned+sg,0.776,3.32,0.258,0.0,0.0,0.0,,0.0,14.207
+Body position,dgs_perjoint,0.776,20.577,1.185,0.004,2.0,0.0,,0.0,11.271
+Body position,dgs_perjoint+sg,0.776,3.182,0.249,0.0,0.0,0.0,,0.0,12.818
+Body position,dgs_weighted,0.776,20.57,1.179,0.003,1.667,0.0,,0.0,11.31
+Body position,dgs_weighted+sg,0.776,3.184,0.247,0.0,0.0,0.0,,0.0,12.831
+Body position,hmr2,0.776,19.813,1.13,0.003,2.0,0.0,,0.0,24.458
+Body position,hmr2+sg,0.776,3.127,0.233,0.0,0.0,0.0,,0.0,21.086
+Camera,dgs_learned,1.0,10.65,0.646,0.002,0.0,0.0,,0.0,13.041
+Camera,dgs_learned+sg,1.0,1.39,0.11,0.0,0.0,0.0,,0.0,11.338
+Camera,dgs_perjoint,1.0,10.764,0.613,0.002,0.0,0.0,,0.0,10.636
+Camera,dgs_perjoint+sg,1.0,1.371,0.106,0.0,0.0,0.0,,0.0,9.924
+Camera,dgs_weighted,1.0,10.786,0.607,0.002,0.0,0.0,,0.0,10.536
+Camera,dgs_weighted+sg,1.0,1.364,0.106,0.0,0.0,0.0,,0.0,9.841
+Camera,hmr2,1.0,9.863,0.586,0.002,0.0,0.0,,0.0,23.927
+Camera,hmr2+sg,1.0,1.31,0.1,0.0,0.0,0.0,,0.0,19.166
+Occlusion,dgs_learned,0.883,18.979,0.816,0.016,1.429,0.0,39.566,0.0,29.131
+Occlusion,dgs_learned+sg,0.883,2.761,0.14,0.002,0.143,0.0,26.836,0.0,25.45
+Occlusion,dgs_perjoint,0.883,18.524,0.798,0.013,1.571,0.0,41.463,0.0,26.572
+Occlusion,dgs_perjoint+sg,0.883,2.652,0.136,0.002,0.0,0.0,27.071,0.0,23.693
+Occlusion,dgs_weighted,0.883,18.151,0.789,0.013,1.571,0.0,41.772,0.0,26.775
+Occlusion,dgs_weighted+sg,0.883,2.603,0.134,0.002,0.0,0.0,27.06,0.0,23.836
+Occlusion,hmr2,0.883,20.368,0.787,0.019,1.857,0.0,48.468,0.0,36.539
+Occlusion,hmr2+sg,0.883,2.961,0.133,0.003,0.143,0.0,30.737,0.0,30.909
+Occlusion,mediapipe_full,0.908,45.002,,0.113,6.0,0.159,,0.195,110.396
+Occlusion,mediapipe_full+sg,0.908,11.388,,0.016,3.5,0.164,,0.195,96.054
+Occlusion,mediapipe_heavy,0.946,36.654,,0.08,9.5,0.143,,0.249,98.556
+Occlusion,mediapipe_heavy+sg,0.946,9.56,,0.017,2.0,0.147,,0.249,85.378
+Occlusion,mediapipe_lite,0.976,67.815,,0.18,18.0,0.201,,0.245,117.843
+Occlusion,mediapipe_lite+sg,0.976,14.519,,0.014,0.0,0.212,,0.245,102.178
+People,dgs_learned,0.862,16.907,0.986,0.007,0.667,0.0,,0.0,11.705
+People,dgs_learned+sg,0.862,3.075,0.195,0.001,0.667,0.0,,0.0,11.603
+People,dgs_perjoint,0.862,16.261,0.962,0.006,0.667,0.0,,0.0,9.08
+People,dgs_perjoint+sg,0.862,2.98,0.19,0.001,0.667,0.0,,0.0,10.116
+People,dgs_weighted,0.862,16.142,0.957,0.005,0.667,0.0,,0.0,9.153
+People,dgs_weighted+sg,0.862,2.962,0.189,0.001,0.667,0.0,,0.0,10.168
+People,hmr2,0.862,15.871,0.915,0.007,0.667,0.0,,0.0,17.685
+People,hmr2+sg,0.862,2.929,0.181,0.001,0.667,0.0,,0.0,15.529
+Video quality,dgs_learned,0.75,15.139,0.764,0.006,0.0,0.0,,0.0,12.678
+Video quality,dgs_learned+sg,0.75,2.47,0.172,0.0,0.0,0.0,,0.0,11.904
+Video quality,dgs_perjoint,0.75,13.691,0.748,0.006,0.0,0.0,,0.0,10.58
+Video quality,dgs_perjoint+sg,0.75,2.395,0.17,0.0,0.0,0.0,,0.0,10.803
+Video quality,dgs_weighted,0.75,13.362,0.739,0.006,0.0,0.0,,0.0,10.517
+Video quality,dgs_weighted+sg,0.75,2.376,0.169,0.0,0.0,0.0,,0.0,10.762
+Video quality,hmr2,0.75,11.182,0.709,0.004,0.2,0.0,,0.0,23.503
+Video quality,hmr2+sg,0.75,2.051,0.161,0.0,0.0,0.0,,0.0,19.349
