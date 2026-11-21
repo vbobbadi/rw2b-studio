@@ -82,7 +82,7 @@ const CHARACTERS = {
 let CUSTOM = null; // {name, color, base, img}
 try { const s = JSON.parse(localStorage.getItem("rw2b_custom") || "null"); if (s && s.img){ const im = new Image(); im.src = s.img; CUSTOM = {...s, imgEl:im}; } } catch (e) {}
 const RIG = window.RigChars;
-function allChars(){ const o = {...CHARACTERS}; if (RIG) RIG.list().forEach(r => o[r.id] = {name:r.name, blurb:"Your rigged 3D character (" + r.bones + " bones), posed from the same body joints.", color:"#ffffff", rig:r.id}); if (CUSTOM) o.custom = {name:CUSTOM.name || "My character", blurb:"Your upload on a " + CHARACTERS[CUSTOM.base].name + " body.", color:CUSTOM.color, draw:(ctx, B, opt) => { CHARACTERS[CUSTOM.base].draw(ctx, B, opt); if (CUSTOM.imgEl && CUSTOM.imgEl.complete) drawHeadImage(ctx, B, CUSTOM.imgEl); }}; return o; }
+function allChars(){ const o = {...CHARACTERS}; if (RIG) RIG.list().forEach(r => o[r.id] = {name:r.name, blurb:r.blurb || ("Your rigged 3D character (" + r.bones + " bones), posed from the same body joints."), color:"#ffffff", rig:r.id, builtin:r.builtin, credit:r.credit}); if (CUSTOM) o.custom = {name:CUSTOM.name || "My character", blurb:"Your upload on a " + CHARACTERS[CUSTOM.base].name + " body.", color:CUSTOM.color, draw:(ctx, B, opt) => { CHARACTERS[CUSTOM.base].draw(ctx, B, opt); if (CUSTOM.imgEl && CUSTOM.imgEl.complete) drawHeadImage(ctx, B, CUSTOM.imgEl); }}; return o; }
 function drawCharacter(ctx, key, B, opts = {}){ const ch = allChars()[key] || CHARACTERS.mocap;
   if (ch.rig){ if (opts.P3 && RIG.draw(ctx, ch.rig, opts.P3, B, opts.view || {})) return; ctx.save(); CHARACTERS.mannequin.draw(ctx, B, {color:"#9aa1ad"}); ctx.restore(); return; }
   ctx.save(); ch.draw(ctx, B, {color: opts.color || ch.color}); if (opts.headImg && opts.headImg.complete) drawHeadImage(ctx, B, opts.headImg); ctx.restore(); }
@@ -154,7 +154,7 @@ $("#page-studio").innerHTML = `
       <div><div class="muted" style="font-size:12.5px;margin-bottom:6px" id="pickLabel">Character for Person 1</div><div class="charpick" id="pick"></div></div>
       <div class="row-ctrl">
         <label>Colour <input type="color" id="color"></label>
-        <label style="flex:1">Mode <select id="mode"><option value="overlay">Character over the person</option><option value="replace">Replace the person</option><option value="solo">Character only (black stage)</option><option value="side">Video and character side by side</option></select></label>
+        <label style="flex:1">Mode <select id="mode"><option value="overlay">Character over the person</option><option value="replace">Replace the person</option><option value="solo">Character only (black stage)</option><option value="side">Video and character side by side</option><option value="three">Three screens: camera · pose · both</option></select></label>
       </div>
       <div class="row-ctrl">
         <label style="flex:1">Model <select id="complex"><option value="lite">Lite (fastest)</option><option value="full" selected>Full (more accurate)</option></select></label>
@@ -184,7 +184,7 @@ $("#page-live").innerHTML = `
     </div>
     <div class="ctrl panel">
       <div><div class="muted" style="font-size:12.5px;margin-bottom:6px">Character for everyone (change one person below)</div><div class="charpick" id="livePick"></div></div>
-      <label>Mode <select id="liveMode"><option value="overlay">Character over me</option><option value="replace">Replace me</option><option value="solo">Character only</option></select></label>
+      <label>Mode <select id="liveMode"><option value="overlay">Character over me</option><option value="replace">Replace me</option><option value="solo">Character only</option><option value="three" selected>Three screens: camera · pose · both</option></select></label>
       <label>Colour <input type="color" id="liveColor"></label>
       <label>People to track <select id="liveMax"><option value="1">1 (just me)</option><option value="2">2</option><option value="3">3</option><option value="4" selected>4</option><option value="5">5</option></select></label>
       <label style="flex-direction:row;display:flex;gap:6px;align-items:center"><input type="checkbox" id="liveMix"> A different character for each new person</label>
@@ -199,7 +199,7 @@ $("#page-live").innerHTML = `
 $("#page-characters").innerHTML = `
 <section>
   <div class="sec-head"><div class="eyebrow">Library</div><h1>Pick a character</h1>
-  <p class="lede">Every character is driven by the same 18-point body, so any of them works on uploads, the live camera and our model output. These previews replay our DGS model's 3D pose from the dance clip (row 2). Drag any preview to turn it.</p></div>
+  <p class="lede">Every character is driven by the same 18-point body, so any of them works on uploads, the live camera and our model output. The cards marked 3D are fully rigged characters downloaded from Mixamo and the three.js examples; you can add your own below. These previews replay our DGS model's 3D pose from the dance clip (row 2). Drag any preview to turn it.</p></div>
   <div class="lib" id="lib"></div>
 </section>
 <section>
@@ -430,7 +430,20 @@ const PCOLORS = ["#ff8a3d","#7fb0e8","#c3a6ff","#5fd3b5","#f2c14e","#ff6b9a","#9
 const pcol = id => PCOLORS[(id - 1) % PCOLORS.length];
 
 /* Compose one output frame: video, then for each person their character */
+const PANES = [["cam", "Camera"], ["pose", "Pose only"], ["both", "Both"]];
 function compose(ctx, W, H, src, people, opt){
+  if (opt.mode === "three"){ // camera and pose side by side on top, both together large below
+    const h = H / 1.5, R = [[0, 0, W / 2, h / 2], [W / 2, 0, W / 2, h / 2], [0, h / 2, W, h]];
+    ctx.fillStyle = "#0c0e12"; ctx.fillRect(0, 0, W, H);
+    PANES.forEach(([k, label], i) => { const [x, y, w, ph] = R[i]; ctx.save(); ctx.translate(x, y); ctx.beginPath(); ctx.rect(0, 0, w, ph); ctx.clip();
+      if (k === "cam") compose(ctx, w, ph, src, people.map(p => ({...p, char:null})), {...opt, mode:"overlay", skel:false, labels:false});
+      else if (k === "pose") compose(ctx, w, ph, src, people, {...opt, mode:"solo", skel:true, labels:false});
+      else compose(ctx, w, ph, src, people, {...opt, mode:"overlay"});
+      const f = Math.max(12, Math.round(h / 34)); ctx.font = `600 ${f}px IBM Plex Mono, ui-monospace, monospace`; const tw = ctx.measureText(label).width;
+      ctx.fillStyle = "#0f1115d0"; ctx.fillRect(f * .6, f * .6, tw + f * 1.2, f * 1.9); ctx.fillStyle = i === 2 ? "#ff8a3d" : "#e9ebef"; ctx.fillText(label, f * 1.2, f * 1.95);
+      ctx.restore(); });
+    ctx.fillStyle = "#2a2f39"; ctx.fillRect(W / 2 - 1, 0, 2, h / 2); ctx.fillRect(0, h / 2 - 1, W, 2);
+    return; }
   const side = opt.mode === "side", vw = side ? W / 2 : W;
   ctx.save(); ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
   if (opt.mirror){ ctx.translate(vw, 0); ctx.scale(-1, 1); }
@@ -473,7 +486,7 @@ function buildPicker(el, get, set, withNone){
 const studio = {src:null, kind:null, frames:[], playing:false, people:[], assign:{}, selected:1, defaultChar:"neon", policy:"same"};
 const out = $("#out"), octx = out.getContext("2d"), st3 = Stage($("#pose3d"), {yaw:-0.5, pitch:0.15}), tracker = PersonTracker();
 st3.onchange = () => render3D();
-function assignOf(id){ if (!studio.assign[id]){ const keys = Object.keys(allChars()); studio.assign[id] = {char: studio.policy === "mix" ? keys[(id - 1) % keys.length] : studio.defaultChar, color: null}; } return studio.assign[id]; }
+function assignOf(id){ if (!studio.assign[id]){ const keys = Object.keys(allChars()); studio.assign[id] = {char: studio.policy === "mix" ? keys[(id - 1) % keys.length] : studio.defaultChar, color: null, auto: true}; } return studio.assign[id]; }
 function render3D(){ const p = studio.people.find(q => q.id === studio.selected) || studio.people[0]; const a = p ? assignOf(p.id) : null;
   draw3D(st3, p && p.W3, a && a.char !== "none" ? a.char : "mannequin", a && (a.color || (allChars()[a.char] || {}).color)); }
 function setStatus(html){ $("#status").innerHTML = html; }
@@ -486,7 +499,7 @@ async function process(){
     return {id:p.id, mask:p.mask, L2:p.t.sm(p.lm, a), W3:p.t.sm3(p.world, a), char:ch, color:as.color || (ch ? allChars()[ch].color : null), vis:p.lm.filter(q => q[3] > 0.5).length}; });
   compose(octx, out.width, out.height, src, studio.people, opts()); render3D();
   if (studio.kind === "video" && studio.people.length) studio.frames.push({t:+src.currentTime.toFixed(3), people:studio.people.map(p => ({id:p.id, character:p.char, world:p.W3.map(q => q.map(v => +v.toFixed(4))), image:p.L2.map(q => q.slice(0, 3).map(v => +v.toFixed(4)))}))});
-  const ids = studio.people.map(p => p.id).join(","); if (ids !== lastIds){ lastIds = ids; renderPeople(); }
+  const ids = studio.people.map(p => p.id).join(","); if (ids !== lastIds){ lastIds = ids; if (studio.people.length && !studio.people.some(p => p.id === studio.selected)) selectPerson(studio.people[0].id); else renderPeople(); }
   const now = performance.now(); fps = fps * .85 + (1000 / Math.max(1, now - lastFrameT)) * .15; lastFrameT = now;
   setStatus(studio.people.length ? chip(`${studio.people.length} ${studio.people.length === 1 ? "person" : "people"} found`, "good") + (studio.kind === "video" ? chip(`${fps.toFixed(0)} fps`) : "") : chip("no person found", "bad"));
 }
@@ -497,11 +510,11 @@ function renderPeople(){
     row.innerHTML = `<i></i><b>Person ${p.id}</b><span>${a.char === "none" ? "unchanged" : (allChars()[a.char] || {name:"?"}).name}</span>`;
     row.onclick = () => selectPerson(p.id); el.appendChild(row); });
 }
-function selectPerson(id){ studio.selected = id; renderPeople(); refreshPickers(); $("#pickLabel").textContent = `Character for Person ${id}`; if (studio.kind === "image" || !studio.playing) redraw(); }
+function selectPerson(id){ studio.selected = id; renderPeople(); const k = assignOf(id).char; [...$("#pick").children].forEach(c => c.classList.toggle("on", c.dataset.k === k)); $("#pickLabel").textContent = `Character for Person ${id}`; if (studio.kind === "image" || !studio.playing) redraw(); }
 function redraw(){ if (studio.src) compose(octx, out.width, out.height, studio.src, studio.people.map(p => { const a = assignOf(p.id); const ch = a.char === "none" ? null : a.char; return {...p, char:ch, color:a.color || (ch ? allChars()[ch].color : null)}; }), opts()); render3D(); }
 out.addEventListener("click", e => { if (!studio.people.length) return; const r = out.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
-  const side = $("#mode").value === "side", mir = $("#mirror").checked; let best = null, bd = 1e9;
-  studio.people.forEach(p => { const h = fromMP(p.L2.map(q => [(mir ? 1 - q[0] : q[0]) * (side ? .5 : 1), q[1], 0])); const pts = [h.head, h.neck, h.pelvis, h.lsho, h.rsho, h.lhip, h.rhip];
+  const md = $("#mode").value, side = md === "side", three = md === "three", mir = $("#mirror").checked; let best = null, bd = 1e9;
+  studio.people.forEach(p => { const h = fromMP(p.L2.map(q => { const u = mir ? 1 - q[0] : q[0]; return [three ? u : u * (side ? .5 : 1), three ? (1 + 2 * q[1]) / 3 : q[1], 0]; })); const pts = [h.head, h.neck, h.pelvis, h.lsho, h.rsho, h.lhip, h.rhip];
     const d = Math.min(...pts.map(q => Math.hypot(q[0] - x, q[1] - y))); if (d < bd){ bd = d; best = p.id; } });
   if (best != null) selectPerson(best); });
 async function loadSource(file, url, name){
@@ -522,7 +535,7 @@ async function loadSource(file, url, name){
   $("#pngBtn").disabled = false; $("#playBtn").disabled = !isVid; $("#jsonBtn").disabled = !isVid; $("#recBtn").disabled = !isVid;
   $("#saveMsg").textContent = name ? "Loaded: " + name : ""; selectPerson(1);
 }
-function sizeOut(w, h){ const max = 1280, s = Math.min(1, max / Math.max(w, h)); const side = $("#mode").value === "side"; out.width = Math.round(w * s) * (side ? 2 : 1); out.height = Math.round(h * s); }
+function sizeOut(w, h){ const max = 1280, s = Math.min(1, max / Math.max(w, h)); const side = $("#mode").value === "side"; const three = $("#mode").value === "three"; out.width = Math.round(w * s) * (side ? 2 : 1); out.height = Math.round(h * s * (three ? 1.5 : 1)); }
 let rafId = 0, busy = false;
 async function tick(){ if (!studio.playing || studio.kind !== "video") return; const v = studio.src;
   if (!busy && !v.paused && v.readyState >= 2){ busy = true; try { await process(); } catch (e) {} busy = false; } rafId = requestAnimationFrame(tick); }
@@ -624,6 +637,8 @@ async function liveLoop(){ if (!live.running) return;
     const now = performance.now(); people.forEach(p => live.last[p.id] = now); renderLivePeople(now);
     $("#liveStatus").innerHTML = people.length ? chip(people.length > 1 ? `${people.length} people` : "tracking you", "good") : chip("step back so your body is in view", "warn"); } catch (e) {}
   requestAnimationFrame(liveLoop); }
+function sizeLive(){ if (!live.vw) return; const three = $("#liveMode").value === "three"; lout.width = live.vw; lout.height = Math.round(live.vh * (three ? 1.5 : 1)); }
+$("#liveMode").onchange = sizeLive;
 $("#liveMix").onchange = () => { live.assign = {}; live.seen = ""; };
 $("#camBtn").onclick = async () => {
   if (live.running){ live.running = false; live.stream.getTracks().forEach(t => t.stop()); $("#camBtn").textContent = "Start camera"; $("#liveRec").disabled = true; return; }
@@ -632,7 +647,7 @@ $("#camBtn").onclick = async () => {
   catch (e) { $("#liveEmpty").innerHTML = "The camera could not start in this view (" + (e.name || e.message) + "). Pages shown inside Claude are not allowed to use a camera, so open the public GitHub site or follow the steps on the right. Uploads and samples on the Pose Studio page work here."; return; }
   stopPlay();
   const v = document.createElement("video"); v.srcObject = live.stream; v.muted = true; v.playsInline = true; await v.play(); live.video = v;
-  lout.width = v.videoWidth; lout.height = v.videoHeight; lout.hidden = false; $("#liveEmpty").hidden = true;
+  live.vw = v.videoWidth; live.vh = v.videoHeight; sizeLive(); lout.hidden = false; $("#liveEmpty").hidden = true;
   try { await getEngine("lite", 5); } catch (e) { $("#liveMsg").textContent = "The pose model could not start: " + e.message; return; }
   live.running = true; live.assign = {}; live.last = {}; live.seen = ""; $("#camBtn").textContent = "Stop camera"; $("#liveRec").disabled = false; ltracker.reset(); liveLoop();
 };
@@ -648,7 +663,7 @@ const Library = (() => {
   function build(){
     const lib = $("#lib"); lib.innerHTML = ""; cards = [];
     Object.entries(allChars()).forEach(([k, ch]) => { const d = document.createElement("article"); d.className = "libcard";
-      d.innerHTML = `<canvas style="cursor:grab;touch-action:none" aria-label="${ch.name} preview, drag to turn"></canvas><div class="body"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3>${ch.name}</h3>${k === "custom" ? '<span class="chip acc">yours</span>' : ch.rig ? '<span class="chip acc">3D rig</span>' : ""}</div><p>${ch.blurb}</p><div class="row-ctrl"><a class="btn" href="#studio" data-use="${k}">Use in studio</a><a class="btn" href="#live" data-use="${k}">Use live</a></div></div>`;
+      d.innerHTML = `<canvas style="cursor:grab;touch-action:none" aria-label="${ch.name} preview, drag to turn"></canvas><div class="body"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3>${ch.name}</h3>${k === "custom" ? '<span class="chip acc">yours</span>' : ch.rig ? `<span class="chip acc">${ch.builtin ? "3D" : "3D · yours"}</span>` : ""}</div><p>${ch.blurb}</p>${ch.credit ? `<p class="muted" style="font-size:11.5px;margin:0">${ch.credit}</p>` : ""}<div class="row-ctrl"><a class="btn" href="#studio" data-use="${k}">Use in studio</a><a class="btn" href="#live" data-use="${k}">Use live</a></div></div>`;
       lib.appendChild(d); const stg = Stage(d.querySelector("canvas"), {yaw:-0.6 + cards.length * 0.25, pitch:0.12}); cards.push([k, stg]); });
     lib.querySelectorAll("[data-use]").forEach(a => a.addEventListener("click", () => { const k = a.dataset.use; if (a.getAttribute("href") === "#live") live.char = k; else { studio.defaultChar = k; assignOf(studio.selected).char = k; } refreshPickers(); }));
   }
@@ -676,7 +691,7 @@ $("#cSave").onclick = () => { if (!pendingImg) return; CUSTOM = {name:$("#cName"
 $("#cDel").onclick = () => { CUSTOM = null; try { localStorage.removeItem("rw2b_custom"); } catch (e) {} Object.values(studio.assign).forEach(a => { if (a.char === "custom") a.char = "neon"; }); if (live.char === "custom") live.char = "robot"; $("#cDel").hidden = true; $("#cMsg").textContent = "Removed."; Library.build(); refreshPickers(); };
 
 function renderRigList(){ const el = $("#rigList"); if (!el || !RIG) return; el.innerHTML = "";
-  RIG.list().forEach(r => { const row = document.createElement("div"); row.className = "row-ctrl"; row.style.justifyContent = "space-between";
+  RIG.list().filter(r => !r.builtin).forEach(r => { const row = document.createElement("div"); row.className = "row-ctrl"; row.style.justifyContent = "space-between";
     row.innerHTML = `<span><b>${r.name.replace(/[<>&]/g, "")}</b> <span class="muted" style="font-size:12px">${r.bones} bones</span></span>`;
     const x = document.createElement("button"); x.className = "btn"; x.textContent = "Remove"; x.onclick = async () => { await RIG.remove(r.id); Object.values(studio.assign).forEach(a => { if (a.char === r.id) a.char = "neon"; }); if (live.char === r.id) live.char = "robot"; renderRigList(); Library.build(); refreshPickers(); };
     row.appendChild(x); el.appendChild(row); }); }
@@ -690,10 +705,18 @@ if ($("#rigFile")){ $("#rigFile").onchange = e => addRig(e.target.files[0]); con
   ["dragenter","dragover"].forEach(t => rd.addEventListener(t, e => { e.preventDefault(); rd.classList.add("over"); })); ["dragleave","drop"].forEach(t => rd.addEventListener(t, e => { e.preventDefault(); rd.classList.remove("over"); }));
   rd.addEventListener("drop", e => addRig(e.dataTransfer.files[0])); }
 function refreshPickers(){
-  buildPicker($("#pick"), () => assignOf(studio.selected).char, k => { const a = assignOf(studio.selected); a.char = k; a.color = null; if (k !== "none") $("#color").value = allChars()[k].color; if (k !== "none") studio.defaultChar = k; renderPeople(); if (!studio.playing) redraw(); }, true);
+  buildPicker($("#pick"), () => assignOf(studio.selected).char, k => { const a = assignOf(studio.selected); a.char = k; a.color = null; a.auto = false; Object.keys(studio.assign).forEach(id => { if (studio.assign[id].auto && !studio.people.some(p => p.id === +id)) delete studio.assign[id]; }); if (k !== "none") $("#color").value = allChars()[k].color; if (k !== "none") studio.defaultChar = k; renderPeople(); if (!studio.playing) redraw(); }, true);
   buildPicker($("#livePick"), () => live.char, k => { live.char = k; live.color = allChars()[k].color; $("#liveColor").value = live.color; if (!$("#liveMix").checked){ for (const id in live.assign) live.assign[id] = k; live.seen = ""; } });
 }
 Library.ready.then(refreshPickers); refreshPickers();
-renderRigList(); if (RIG) RIG.restore().then(l => { if (l.length){ Library.build(); refreshPickers(); renderRigList(); } });
+const BUILTIN_RIGS = [
+  {id:"b_xbot", name:"X Bot", url:"models/xbot.glb", blurb:"Mixamo's classic training dummy, fully rigged in 3D.", credit:"Mixamo (Adobe), via the three.js examples."},
+  {id:"b_michelle", name:"Michelle", url:"models/michelle.glb", blurb:"A textured Mixamo character in streetwear.", credit:"Mixamo (Adobe), via the three.js examples."},
+  {id:"b_soldier", name:"Soldier", url:"models/soldier.glb", blurb:"A Mixamo soldier in combat gear.", credit:"Mixamo (Adobe), via the three.js examples."},
+  {id:"b_robot", name:"Expressive Robot", url:"models/robot.glb", blurb:"A friendly low-poly robot.", credit:"Tomás Laulhé (Quaternius), CC0, via the three.js examples."},
+  {id:"b_samba", name:"Samba Dancer", url:"models/samba.fbx", blurb:"A slim Mixamo dancer figure, fully rigged in 3D.", credit:"Mixamo (Adobe), via the three.js examples."}];
+renderRigList();
+if (RIG){ RIG.restore().then(l => { if (l.length){ Library.build(); refreshPickers(); renderRigList(); } });
+  RIG.builtin(BUILTIN_RIGS, () => { Library.build(); refreshPickers(); }); }
 route();
 })();

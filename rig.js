@@ -11,7 +11,9 @@ const AIMS = [ // [bone, child bone, from joint, to joint]
   ["RightArm", "RightForeArm", "rsho", "relb"], ["RightForeArm", "RightHand", "relb", "rwri"],
   ["LeftUpLeg", "LeftLeg", "lhip", "lkne"], ["LeftLeg", "LeftFoot", "lkne", "lank"], ["LeftFoot", "LeftToeBase", "lank", "lfoot"],
   ["RightUpLeg", "RightLeg", "rhip", "rkne"], ["RightLeg", "RightFoot", "rkne", "rank"], ["RightFoot", "RightToeBase", "rank", "rfoot"]];
-const clean = n => n.replace(/^.*:/, "").replace(/^mixamorig\d*[:_]?/i, "");
+const ALIAS = {Abdomen:"Spine"}; // Blender/Quaternius-style names → Mixamo names
+[["L", "Left"], ["R", "Right"]].forEach(([s, side]) => Object.entries({Shoulder:"Shoulder", UpperArm:"Arm", LowerArm:"ForeArm", Palm2:"Hand", UpperLeg:"UpLeg", LowerLeg:"Leg", Foot:"Foot"}).forEach(([a, b]) => { ALIAS[a + "." + s] = side + b; ALIAS[a + s] = side + b; ALIAS[a + "_" + s] = side + b; }));
+const clean = n => { const k = n.replace(/^.*:/, "").replace(/^mixamorig\d*[:_]?/i, ""); return ALIAS[k] || k; };
 
 let renderer = null, glCanvas = null;
 function gl(){ if (renderer) return renderer; glCanvas = document.createElement("canvas");
@@ -30,10 +32,19 @@ function prepare(id, name, object){
   if (!sets.length){ const b = {}; object.traverse(o => { if (o.isBone){ const k = clean(o.name); if (!b[k]) b[k] = o; } }); if (b.Hips) sets.push(b); }
   if (!sets.length) throw new Error("No Mixamo-style skeleton found (expected a bone named Hips). Download from Mixamo with Skin and in T-pose.");
   object.updateMatrixWorld(true);
-  const box = new T.Box3().setFromObject(object), h = Math.max(1e-6, box.max.y - box.min.y), s = 1.75 / h;
+  // height from the skeleton (mesh bounds are unreliable when the armature itself is scaled, e.g. Mixamo GLBs)
+  const B0 = sets[0], yOf = b => { const v = new T.Vector3(); b.getWorldPosition(v); return v.y; };
+  const top = B0.Head ? yOf(B0.Head) : null, feet = [B0.LeftFoot, B0.RightFoot, B0.LeftToeBase, B0.RightToeBase].filter(Boolean).map(yOf);
+  let h = top != null && feet.length ? (top - Math.min(...feet)) * 1.12 : 0;
+  if (!(h > 1e-6)){ const box = new T.Box3().setFromObject(object); h = Math.max(1e-6, box.max.y - box.min.y); }
+  const s = 1.75 / h;
   holder.scale.setScalar(s); root.updateMatrixWorld(true);
   const hp = new T.Vector3(); sets[0].Hips.getWorldPosition(hp); holder.position.sub(hp); root.updateMatrixWorld(true);
-  const all = sets.map(b => { const rest = {}; Object.entries(b).forEach(([k, x]) => rest[k] = x.quaternion.clone()); return {bones:b, rest}; });
+  const all = sets.map(b => { const rest = {}, aim = {}; Object.entries(b).forEach(([k, x]) => rest[k] = x.quaternion.clone());
+    AIMS.forEach(([bn, cn]) => { const bone = b[bn], child = b[cn]; if (!bone || !child) return; const v = wp(child).sub(wp(bone));
+      let desc = false; for (let p = child.parent; p; p = p.parent) if (p === bone){ desc = true; break; }
+      aim[bn] = {v: v.clone().applyQuaternion(wq(bone).invert()), len: v.length(), desc}; });
+    return {bones:b, rest, aim}; });
   rigs[id] = {id, name, scene, root, holder, object, sets:all, bones:sets[0]};
   return rigs[id];
 }
@@ -44,8 +55,8 @@ function setWorldQuat(bone, qWorld){ const pq = bone.parent ? wq(bone.parent) : 
 function basis(up, right){ const u = up.clone().normalize(), f = new T.Vector3().crossVectors(right, u).normalize(), r = new T.Vector3().crossVectors(u, f).normalize(); return new T.Matrix4().makeBasis(r, u, f); }
 
 /* P: named joints in metres, three.js axes (x right, y up, z toward viewer), any origin */
-function pose(rig, P){ rig.sets.forEach(set => poseSet(rig.root, set.bones, set.rest, P)); rig.root.updateMatrixWorld(true); }
-function poseSet(root, bones, rest, P){
+function pose(rig, P){ rig.sets.forEach(set => poseSet(rig.root, set.bones, set.rest, P, set.aim)); rig.root.updateMatrixWorld(true); }
+function poseSet(root, bones, rest, P, aim = {}){
   Object.entries(bones).forEach(([k, b]) => b.quaternion.copy(rest[k])); root.updateMatrixWorld(true);
   const H = bones.Hips, tgt = k => V(P[k]);
   const lU = bones.LeftUpLeg, rU = bones.RightUpLeg, N = bones.Neck || bones.Spine2 || bones.Spine;
@@ -55,8 +66,10 @@ function poseSet(root, bones, rest, P){
     setWorldQuat(H, q.multiply(wq(H)));
   }
   AIMS.forEach(([bn, cn, a, b]) => { const bone = bones[bn], child = bones[cn]; if (!bone || !child || !P[a] || !P[b]) return;
-    const cur = wp(child).sub(wp(bone)), want = tgt(b).sub(tgt(a)); if (cur.lengthSq() < 1e-10 || want.lengthSq() < 1e-10) return;
-    const q = new T.Quaternion().setFromUnitVectors(cur.normalize(), want.normalize()); setWorldQuat(bone, q.multiply(wq(bone))); });
+    const A = aim[bn], cur = A ? A.v.clone().applyQuaternion(wq(bone)) : wp(child).sub(wp(bone)), want = tgt(b).sub(tgt(a)); if (cur.lengthSq() < 1e-10 || want.lengthSq() < 1e-10) return;
+    const q = new T.Quaternion().setFromUnitVectors(cur.clone().normalize(), want.clone().normalize()); setWorldQuat(bone, q.multiply(wq(bone)));
+    if (A && !A.desc && child.parent){ // IK-style rigs: the child is not under this bone, so carry it to the bone's end
+      const end = wp(bone).add(A.v.clone().applyQuaternion(wq(bone))); child.position.copy(child.parent.worldToLocal(end)); child.updateMatrixWorld(true); } });
 }
 
 /* Draw onto a 2D context. P3: named 3D joints in camera convention (metres, y down, z forward).
@@ -70,9 +83,13 @@ function draw(ctx, id, P3, B2, view = {}){
   rig.root.rotation.set(view.pitch || 0, view.yaw || 0, 0, "XYZ"); rig.root.updateMatrixWorld(true);
   // scale: screen torso length / rendered torso length
   const proj = k => { const v = V(P[k]).applyEuler(rig.root.rotation); return v; };
-  const t3 = proj("neck").sub(proj("pelvis")), t3len = Math.hypot(t3.x, t3.y);
-  const t2len = Math.hypot(B2.neck[0] - B2.pelvis[0], B2.neck[1] - B2.pelvis[1]); if (t3len < 1e-4 || t2len < 2) return false;
-  const s = t2len / t3len, hip2 = mid(B2.lhip, B2.rhip);
+  // scale = median screen/3D length over limbs that lie roughly across the view (foreshortened ones are unreliable)
+  const SEG = [["neck","pelvis"],["lsho","rsho"],["lhip","rhip"],["lsho","lelb"],["lelb","lwri"],["rsho","relb"],["relb","rwri"],["lhip","lkne"],["lkne","lank"],["rhip","rkne"],["rkne","rank"]];
+  const rat = [];
+  SEG.forEach(([a, b]) => { if (!P[a] || !P[b] || !B2[a] || !B2[b]) return; const d = proj(b).sub(proj(a)), xy = Math.hypot(d.x, d.y), L = d.length();
+    const l2 = Math.hypot(B2[b][0] - B2[a][0], B2[b][1] - B2[a][1]); if (L > 1e-4 && xy / L > 0.6 && l2 > 2) rat.push(l2 / xy); });
+  if (!rat.length) return false; rat.sort((x, y) => x - y);
+  const s = rat[Math.floor(rat.length / 2)], hip2 = mid(B2.lhip, B2.rhip);
   const r = gl(), dpr = Math.min(2, window.devicePixelRatio || 1); r.setPixelRatio(dpr); r.setSize(W, H, false);
   const cam = new T.OrthographicCamera(0, W, H, 0, -1e5, 1e5); cam.position.z = 1e4;
   const g = rig.root; const savedS = g.scale.x; g.scale.setScalar(s); g.position.set(hip2[0], H - hip2[1], 0); g.updateMatrixWorld(true);
@@ -99,7 +116,11 @@ async function add(file){
 }
 async function restore(){ try { const db = await idb(); const all = await new Promise((res, rej) => { const q = db.transaction("rigs").objectStore("rigs").getAll(); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
   for (const r of all){ try { prepare(r.id, r.name, await parse(r.file, r.buf)); } catch (e) {} } } catch (e) {} return list(); }
-function list(){ return Object.values(rigs).map(r => ({id: r.id, name: r.name, bones: Object.keys(r.bones).length})); }
+function list(){ return Object.values(rigs).map(r => ({id: r.id, name: r.name, bones: Object.keys(r.bones).length, builtin: !!r.builtin, blurb: r.blurb, credit: r.credit})); }
 
-window.RigChars = {add, restore, list, draw, remove};
+async function builtin(items, onEach){
+  for (const it of items){ if (rigs[it.id]) continue;
+    try { const buf = await (await fetch(it.url)).arrayBuffer(); const r = prepare(it.id, it.name, await parse(it.url, buf)); Object.assign(r, {builtin:true, blurb:it.blurb, credit:it.credit}); onEach && onEach(r); }
+    catch (e) { console.warn("rw2b: could not load", it.name, e); } } }
+window.RigChars = {add, restore, list, draw, remove, builtin};
 })();
